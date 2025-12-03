@@ -8,13 +8,13 @@ A [TineMce](https://www.tiny.cloud/) integration for [Filament](https://filament
 1-Install the package via composer
 
 ```bash
-composer require ronylang/filament-tinymce-editor
+composer require rony-lang/filament-tinymce-editor
 ```
 
 2-Publish assets
 
 ```bash
-php artisan vendor:publish --provider="Ronylang\FilamentTinymceEditor\Providers\TinymceditorServiceProvider"
+php artisan vendor:publish --provider="RonyLang\FilamentTinymceEditor\Providers\TinymceditorServiceProvider"
 ```
 
 3-Migrate Database
