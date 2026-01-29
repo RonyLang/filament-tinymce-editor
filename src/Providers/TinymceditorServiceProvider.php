@@ -23,25 +23,8 @@ class TinymceditorServiceProvider extends PackageServiceProvider
                         ->copyAndRegisterServiceProviderInApp()
                         ->askToStarRepoOnGitHub($this->getAssetPackageName());
 
-                    // 自动在安装时下载并安装 TinyMCE 静态资源，避免用户忘记手动执行命令导致 404
-                    // 使用 $command->call 调用已注册的 artisan 命令
-                    try {
-                        // 仅在安装命令真正运行且有输出对象时触发下载，避免在 package:discover 时执行
-                        $shouldCall = false;
-                        if (method_exists($command, 'getOutput')) {
-                            $out = $command->getOutput();
-                            $shouldCall = ($out !== null);
-                        }
-
-                        if ($shouldCall) {
-                            $command->call('tinymce:install-assets');
-                        }
-                    } catch (\Throwable $e) {
-                        // 不要阻塞安装流程；若有输出对象则记录到输出，否则静默失败
-                        if (method_exists($command, 'getOutput') && $command->getOutput() !== null) {
-                            $command->getOutput()->writeln('<comment>tinymce:install-assets failed: ' . $e->getMessage() . '</comment>');
-                        }
-                    }
+                    // 注意：不要在安装闭包中自动调用外部命令，以免在 composer 的 package:discover
+                    // 或卸载流程中产生副作用或并发错误。提示用户手动运行安装命令即可。
                 }
             );
     }

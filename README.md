@@ -48,9 +48,13 @@ TinyEditor::make('content')
 	->fileAttachmentsDirectory('uploads')
     ->profile('default|simple|full|minimal|none|custom')
 	->rtl()
-	->resize('both')
-    ->required();
+After installing the package, if you prefer to use local TinyMCE assets (provider=local), run:
+
+```bash
+php artisan tinymce:install-assets
 ```
+
+This will download `tinymce.min.js` into `public/vendor/filament-tinymce-editor/tinymce.min.js`.
 
 ## Config
 
