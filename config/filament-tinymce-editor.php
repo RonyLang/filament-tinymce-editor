@@ -2,7 +2,7 @@
 
 return [
     // 资源提供方式: cloud(官方 tiny.cloud), cdn(jsDelivr), local(本地静态文件)
-    'provider' => env('TINYMCE_PROVIDER', 'cloud'),
+    'provider' => env('TINYMCE_PROVIDER', 'local'),
 
     'version' => [
         'tiny' => '8.0.2',

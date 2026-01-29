@@ -31,6 +31,7 @@ class TinymceditorServiceProvider extends PackageServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 \RonyLang\FilamentTinymceEditor\Console\GrantTinymceEditorPermission::class,
+                \RonyLang\FilamentTinymceEditor\Console\InstallTinymceAssets::class,
             ]);
         }
     }
