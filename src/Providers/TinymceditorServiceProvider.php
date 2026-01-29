@@ -22,9 +22,6 @@ class TinymceditorServiceProvider extends PackageServiceProvider
                     $command->publishConfigFile()
                         ->copyAndRegisterServiceProviderInApp()
                         ->askToStarRepoOnGitHub($this->getAssetPackageName());
-
-                    // 注意：不要在安装闭包中自动调用外部命令，以免在 composer 的 package:discover
-                    // 或卸载流程中产生副作用或并发错误。提示用户手动运行安装命令即可。
                 }
             );
     }
@@ -34,7 +31,6 @@ class TinymceditorServiceProvider extends PackageServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 \RonyLang\FilamentTinymceEditor\Console\GrantTinymceEditorPermission::class,
-                \RonyLang\FilamentTinymceEditor\Console\InstallTinymceAssets::class,
             ]);
         }
     }
@@ -73,21 +69,34 @@ class TinymceditorServiceProvider extends PackageServiceProvider
 
         // 计算主脚本 URL，支持 cloud/cdn/local
         if ($provider === 'local') {
-            $configured = config('filament-tinymce-editor.local.main_js', '/vendor/filament-tinymce-editor/tinymce.min.js');
-            // 若配置指向 public 下的文件，检查文件是否存在；不存在则回退到 CDN
-            if (is_string($configured) && str_starts_with($configured, '/')) {
-                $possiblePath = public_path(ltrim($configured, '/'));
-                if (file_exists($possiblePath)) {
-                    $mainJs = $configured;
-                } else {
-                    // 回退到 CDN
-                    $mainJs = 'https://cdn.jsdelivr.net/npm/tinymce@' . $tinyVersion . '/tinymce.js';
-                    if ($tiny_licence_key != 'no-api-key') {
-                        $mainJs = 'https://cdn.tiny.cloud/1/' . $tiny_licence_key . '/tinymce/' . $tinyVersion . '/tinymce.min.js';
+            $mainJs = config('filament-tinymce-editor.local.main_js', '/vendor/tinymce/tinymce.min.js');
+
+            // 如果本地资源不存在，尝试在引导阶段自动下载并解压到 public/vendor/tinymce
+            $targetPath = public_path('vendor/tinymce');
+            $mainFile = $targetPath . DIRECTORY_SEPARATOR . 'tinymce.min.js';
+
+            if (!file_exists($mainFile)) {
+                try {
+                    // 优先从 npm registry 下载 tgz 并解压（需要系统有 curl 和 tar）
+                    $tgzUrl = 'https://registry.npmjs.org/tinymce/-/tinymce-' . $tinyVersion . '.tgz';
+                    $escapedTgzUrl = escapeshellarg($tgzUrl);
+                    $escapedTarget = escapeshellarg($targetPath);
+
+                    // 创建目标目录并从标准输入解压（--strip-components=1 去掉 package/ 前缀）
+                    @mkdir($targetPath, 0755, true);
+                    $cmd = "curl -L {$escapedTgzUrl} | tar -xzf - -C {$escapedTarget} --strip-components=1 package";
+                    @exec($cmd, $output, $status);
+
+                    if (($status ?? 1) !== 0 || !file_exists($mainFile)) {
+                        // 回退：只下载单个 minified 文件（保证最基础功能）
+                        $singleUrl = 'https://cdn.jsdelivr.net/npm/tinymce@' . $tinyVersion . '/tinymce.min.js';
+                        $escapedSingle = escapeshellarg($singleUrl);
+                        $outFile = $targetPath . DIRECTORY_SEPARATOR . 'tinymce.min.js';
+                        @exec("curl -L {$escapedSingle} -o " . escapeshellarg($outFile), $o2, $r2);
                     }
+                } catch (\Throwable $e) {
+                    // 失败则静默，不阻塞应用启动；前端仍会报 404，提示用户手动安装
                 }
-            } else {
-                $mainJs = $configured;
             }
         } else {
             $mainJs = 'https://cdn.jsdelivr.net/npm/tinymce@' . $tinyVersion . '/tinymce.js';

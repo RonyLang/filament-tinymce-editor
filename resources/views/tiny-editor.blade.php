@@ -2,28 +2,8 @@
     $tinyVersion = config('filament-tinymce-editor.version.tiny', '8.0.2');
     $tinyLicence = config('filament-tinymce-editor.version.licence_key', 'no-api-key');
     $provider = config('filament-tinymce-editor.provider', 'cloud');
-
     if ($provider === 'local') {
-        $configured = config('filament-tinymce-editor.local.main_js', '/vendor/tinymce/tinymce.min.js');
-
-        // 如果配置为相对 public 的路径，优先使用并检查文件是否存在；不存在时尝试新默认路径，再回退到 CDN
-        if (is_string($configured) && str_starts_with($configured, '/')) {
-            $possiblePath = public_path(ltrim($configured, '/'));
-            if (file_exists($possiblePath)) {
-                $__tinyMainSrc = $configured;
-            } else {
-                $newPath = '/vendor/filament-tinymce-editor/tinymce.min.js';
-                if (file_exists(public_path(ltrim($newPath, '/')))) {
-                    $__tinyMainSrc = $newPath;
-                } else {
-                    $__tinyMainSrc = $tinyLicence !== 'no-api-key'
-                        ? ('https://cdn.tiny.cloud/1/' . $tinyLicence . '/tinymce/' . $tinyVersion . '/tinymce.min.js')
-                        : ('https://cdn.jsdelivr.net/npm/tinymce@' . $tinyVersion . '/tinymce.js');
-                }
-            }
-        } else {
-            $__tinyMainSrc = $configured;
-        }
+        $__tinyMainSrc = config('filament-tinymce-editor.local.main_js', '/vendor/tinymce/tinymce.min.js');
     } else {
         $__tinyMainSrc = $tinyLicence !== 'no-api-key'
             ? ('https://cdn.tiny.cloud/1/' . $tinyLicence . '/tinymce/' . $tinyVersion . '/tinymce.min.js')
