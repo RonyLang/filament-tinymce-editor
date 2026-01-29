@@ -58,7 +58,8 @@ return [
      * 也可使用相对/绝对 URL，如 '/vendor/tinymce/tinymce.min.js'
      */
     'local' => [
-        'main_js' => '/vendor/tinymce/tinymce.min.js',
+        // 本地默认路径：发布到 `public/vendor/filament-tinymce-editor/tinymce.min.js`
+        'main_js' => '/vendor/filament-tinymce-editor/tinymce.min.js',
     ],
 
     'extra' => [

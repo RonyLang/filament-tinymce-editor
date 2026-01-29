@@ -17,6 +17,10 @@ composer require rony-lang/filament-tinymce-editor
 php artisan vendor:publish --provider="RonyLang\FilamentTinymceEditor\Providers\TinymceditorServiceProvider"
 ```
 
+```bash
+php artisan tinymce:install-assets
+```
+
 3-Migrate Database
 
 ```bash

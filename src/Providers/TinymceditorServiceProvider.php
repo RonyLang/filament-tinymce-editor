@@ -22,6 +22,15 @@ class TinymceditorServiceProvider extends PackageServiceProvider
                     $command->publishConfigFile()
                         ->copyAndRegisterServiceProviderInApp()
                         ->askToStarRepoOnGitHub($this->getAssetPackageName());
+
+                    // 自动在安装时下载并安装 TinyMCE 静态资源，避免用户忘记手动执行命令导致 404
+                    // 使用 $command->call 调用已注册的 artisan 命令
+                    try {
+                        $command->call('tinymce:install-assets');
+                    } catch (\Throwable $e) {
+                        // 不要阻塞安装流程；仅记录到输出
+                        $command->getOutput()->writeln('<comment>tinymce:install-assets failed: ' . $e->getMessage() . '</comment>');
+                    }
                 }
             );
     }
@@ -31,6 +40,7 @@ class TinymceditorServiceProvider extends PackageServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 \RonyLang\FilamentTinymceEditor\Console\GrantTinymceEditorPermission::class,
+                \RonyLang\FilamentTinymceEditor\Console\InstallTinymceAssets::class,
             ]);
         }
     }
@@ -69,7 +79,22 @@ class TinymceditorServiceProvider extends PackageServiceProvider
 
         // 计算主脚本 URL，支持 cloud/cdn/local
         if ($provider === 'local') {
-            $mainJs = config('filament-tinymce-editor.local.main_js', '/vendor/tinymce/tinymce.min.js');
+            $configured = config('filament-tinymce-editor.local.main_js', '/vendor/filament-tinymce-editor/tinymce.min.js');
+            // 若配置指向 public 下的文件，检查文件是否存在；不存在则回退到 CDN
+            if (is_string($configured) && str_starts_with($configured, '/')) {
+                $possiblePath = public_path(ltrim($configured, '/'));
+                if (file_exists($possiblePath)) {
+                    $mainJs = $configured;
+                } else {
+                    // 回退到 CDN
+                    $mainJs = 'https://cdn.jsdelivr.net/npm/tinymce@' . $tinyVersion . '/tinymce.js';
+                    if ($tiny_licence_key != 'no-api-key') {
+                        $mainJs = 'https://cdn.tiny.cloud/1/' . $tiny_licence_key . '/tinymce/' . $tinyVersion . '/tinymce.min.js';
+                    }
+                }
+            } else {
+                $mainJs = $configured;
+            }
         } else {
             $mainJs = 'https://cdn.jsdelivr.net/npm/tinymce@' . $tinyVersion . '/tinymce.js';
             if ($tiny_licence_key != 'no-api-key') {
