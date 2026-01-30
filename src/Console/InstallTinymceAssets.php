@@ -6,13 +6,14 @@ use Illuminate\Console\Command;
 
 class InstallTinymceAssets extends Command
 {
-    protected $signature = 'tinymce:install-assets {--version=}';
+    // 使用非保留选项名，避免与全局 --version 冲突
+    protected $signature = 'tinymce:install-assets {--tinymce-version=}';
 
     protected $description = 'Download and install TinyMCE front-end assets to public/vendor/tinymce';
 
     public function handle(): int
     {
-        $version = $this->option('version') ?: config('filament-tinymce-editor.version.tiny', '8.0.2');
+        $version = $this->option('tinymce-version') ?: config('filament-tinymce-editor.version.tiny', '8.0.2');
         $this->info("Installing TinyMCE assets (version: {$version})...");
 
         $targetPath = public_path('vendor/tinymce');
