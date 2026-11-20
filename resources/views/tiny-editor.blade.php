@@ -3,7 +3,7 @@
     $tinyLicence = config('filament-tinymce-editor.version.licence_key', 'no-api-key');
     $provider = config('filament-tinymce-editor.provider', 'cloud');
     if ($provider === 'local') {
-        $__tinyMainSrc = config('filament-tinymce-editor.local.main_js', '/vendor/tinymce/tinymce.min.js');
+        $__tinyMainSrc = \RonyLang\FilamentTinymceEditor\Tiny::localMainSrc();
     } else {
         $__tinyMainSrc = $tinyLicence !== 'no-api-key'
             ? ('https://cdn.tiny.cloud/1/' . $tinyLicence . '/tinymce/' . $tinyVersion . '/tinymce.min.js')
@@ -98,6 +98,9 @@
                             placeholder: @js($getPlaceholder()),
                             custom_configs: {{ $getCustomConfigs() }},
                             promotion: false,
+                            @if ($provider === 'local')
+                            cache_suffix: @js(\RonyLang\FilamentTinymceEditor\Tiny::cacheSuffix()),
+                            @endif
                             license_key: '{{ $getLicenseKey() }}',
                             image_advtab: @js($getimageAdvtab()),
                             file_picker_callback: (cb, value, meta) => {

@@ -9,6 +9,53 @@ class Tiny
         return config('filament-tinymce-editor.version.tiny', '8.0.2');
     }
 
+    /** Directory the local provider serves TinyMCE from (public/vendor/tinymce). */
+    public static function localPath(): string
+    {
+        return public_path('vendor/tinymce');
+    }
+
+    /**
+     * Version of the TinyMCE files actually installed in localPath(), or null
+     * when missing/unreadable. Cache busting uses this (not the configured
+     * version) so a URL always matches the bytes being served, even while the
+     * config has already been bumped but the files are not swapped yet.
+     */
+    public static function installedVersion(): ?string
+    {
+        $file = static::localPath() . DIRECTORY_SEPARATOR . 'package.json';
+        if (!is_file($file)) {
+            return null;
+        }
+
+        $version = json_decode((string) @file_get_contents($file), true)['version'] ?? null;
+
+        return is_string($version) && static::isValidVersion($version) ? $version : null;
+    }
+
+    public static function isValidVersion(string $version): bool
+    {
+        return (bool) preg_match('/^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/', $version);
+    }
+
+    /**
+     * Cache suffix appended to every local TinyMCE file (core, theme, model,
+     * icons, plugins, skins) so browsers never mix cached files of different
+     * versions after an upgrade.
+     */
+    public static function cacheSuffix(): string
+    {
+        return 'v=' . (static::installedVersion() ?? static::version());
+    }
+
+    /** URL of the local main script, including the cache suffix. */
+    public static function localMainSrc(): string
+    {
+        $src = (string) config('filament-tinymce-editor.local.main_js', '/vendor/tinymce/tinymce.min.js');
+
+        return $src . (str_contains($src, '?') ? '&' : '?') . static::cacheSuffix();
+    }
+
     public static function languageVersion(): string
     {
         return config('filament-tinymce-editor.version.language.version', '25.8.4');

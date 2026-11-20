@@ -3,63 +3,127 @@
 namespace RonyLang\FilamentTinymceEditor\Console;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Process;
+use RonyLang\FilamentTinymceEditor\Tiny;
+use RuntimeException;
+use Throwable;
 
 class InstallTinymceAssets extends Command
 {
     // 使用非保留选项名，避免与全局 --version 冲突
-    protected $signature = 'tinymce:install-assets {--tinymce-version=}';
+    protected $signature = 'tinymce:install-assets
+        {--tinymce-version= : Version to install (default: config filament-tinymce-editor.version.tiny)}
+        {--force : Reinstall even if this version is already installed}';
 
-    protected $description = 'Download and install TinyMCE front-end assets to public/vendor/tinymce';
+    protected $description = 'Install or upgrade TinyMCE in public/vendor/tinymce (verified npm download + atomic swap)';
+
+    private const REGISTRY = 'https://registry.npmjs.org/tinymce/';
 
     public function handle(): int
     {
-        $version = $this->option('tinymce-version') ?: config('filament-tinymce-editor.version.tiny', '8.0.2');
-        $this->info("Installing TinyMCE assets (version: {$version})...");
+        $version = (string) ($this->option('tinymce-version') ?: Tiny::version());
+        if (!Tiny::isValidVersion($version)) {
+            $this->error("Invalid TinyMCE version: {$version}");
 
-        $targetPath = public_path('vendor/tinymce');
-        $mainFile = $targetPath . DIRECTORY_SEPARATOR . 'tinymce.min.js';
-
-        if (file_exists($mainFile)) {
-            $this->info('TinyMCE appears to be already installed at: ' . $mainFile);
-            return 0;
+            return self::FAILURE;
         }
 
-        if (!@mkdir($targetPath, 0755, true) && !is_dir($targetPath)) {
-            $this->error('Failed to create target directory: ' . $targetPath);
-            return 1;
+        $target = Tiny::localPath();
+        $installed = Tiny::installedVersion();
+        if ($installed === $version && !$this->option('force')) {
+            $this->info("TinyMCE {$version} is already installed at {$target}.");
+
+            return self::SUCCESS;
         }
 
-        // Try npm tarball first
-        $tgzUrl = 'https://registry.npmjs.org/tinymce/-/tinymce-' . $version . '.tgz';
-        $this->line("Attempting to download npm package: {$tgzUrl}");
+        $this->info("Installing TinyMCE {$version}" . ($installed ? " (replacing {$installed})" : '') . '...');
+        $staging = dirname($target) . DIRECTORY_SEPARATOR . '.tinymce-' . $version . '-staging';
+        $tarball = storage_path('app/tinymce-' . $version . '-' . uniqid() . '.tgz');
 
-        $escapedTgzUrl = escapeshellarg($tgzUrl);
-        $escapedTarget = escapeshellarg($targetPath);
-        $cmd = "curl -L {$escapedTgzUrl} | tar -xzf - -C {$escapedTarget} --strip-components=1 package";
+        try {
+            $this->download($version, $tarball);
+            $this->extract($tarball, $staging, $version);
+            $backup = $this->swap($staging, $target, $installed);
+        } catch (Throwable $e) {
+            File::deleteDirectory($staging);
+            $this->error('TinyMCE install failed, the installed version was not changed: ' . $e->getMessage());
 
-        @exec($cmd, $output, $status);
-
-        if (($status ?? 1) === 0 && file_exists($mainFile)) {
-            $this->info('TinyMCE npm package downloaded and extracted successfully.');
-            return 0;
+            return self::FAILURE;
+        } finally {
+            File::delete($tarball);
         }
 
-        $this->line('Npm tarball extraction failed or tinymce.min.js not found, falling back to CDN single-file download.');
-
-        $singleUrl = 'https://cdn.jsdelivr.net/npm/tinymce@' . $version . '/tinymce.min.js';
-        $outFile = $targetPath . DIRECTORY_SEPARATOR . 'tinymce.min.js';
-        $this->line("Downloading single file: {$singleUrl}");
-
-        $escapedSingle = escapeshellarg($singleUrl);
-        $escapedOut = escapeshellarg($outFile);
-        @exec("curl -L {$escapedSingle} -o {$escapedOut}", $o2, $r2);
-
-        if (($r2 ?? 1) === 0 && file_exists($outFile)) {
-            $this->info('Downloaded tinymce.min.js to: ' . $outFile);
-            return 0;
+        $this->info("TinyMCE {$version} installed at {$target}.");
+        if ($backup !== null) {
+            $this->line("Previous version kept at {$backup}");
         }
 
-        $this->error('Failed to download TinyMCE assets. Please ensure curl/tar are available and writable permissions to public directory.');
-        return 1;
+        return self::SUCCESS;
+    }
+
+    /** Download the npm tarball and verify it against the registry's sha512 integrity. */
+    private function download(string $version, string $tarball): void
+    {
+        $dist = Http::timeout(30)->retry(2, 500)->get(self::REGISTRY . $version)->throw()->json('dist');
+        $integrity = (string) ($dist['integrity'] ?? '');
+        if (!str_starts_with($integrity, 'sha512-') || empty($dist['tarball'])) {
+            throw new RuntimeException('npm registry metadata has no sha512 integrity or tarball URL');
+        }
+
+        File::ensureDirectoryExists(dirname($tarball));
+        Http::timeout(300)->retry(2, 1000)->sink($tarball)->get($dist['tarball'])->throw();
+
+        $actual = 'sha512-' . base64_encode((string) hash_file('sha512', $tarball, true));
+        if (!hash_equals($integrity, $actual)) {
+            throw new RuntimeException('integrity mismatch for the downloaded tarball');
+        }
+        $this->line('Download verified against npm integrity.');
+    }
+
+    /** Extract into a staging directory next to the target and sanity-check it. */
+    private function extract(string $tarball, string $staging, string $version): void
+    {
+        File::deleteDirectory($staging);
+        File::ensureDirectoryExists($staging);
+        // No member filter argument: works with both GNU tar and BusyBox tar.
+        Process::timeout(120)->run(['tar', '-xzf', $tarball, '-C', $staging, '--strip-components=1'])->throw();
+
+        $extracted = json_decode((string) @file_get_contents($staging . '/package.json'), true)['version'] ?? null;
+        if ($extracted !== $version || !is_file($staging . '/tinymce.min.js')) {
+            throw new RuntimeException("extracted package is incomplete or not version {$version}");
+        }
+    }
+
+    /**
+     * Two same-filesystem renames (target -> sibling backup, staging -> target), so the
+     * live directory is never half-written. The backup then leaves public/ for
+     * storage/app/tinymce-backups (kept as a hidden sibling if that move fails).
+     */
+    private function swap(string $staging, string $target, ?string $installed): ?string
+    {
+        if (!is_dir($target)) {
+            if (!@rename($staging, $target)) {
+                throw new RuntimeException("cannot move {$staging} to {$target}");
+            }
+
+            return null;
+        }
+
+        $stamp = ($installed ?? 'unknown') . '-' . date('YmdHis');
+        $sibling = dirname($target) . DIRECTORY_SEPARATOR . '.tinymce-backup-' . $stamp;
+        if (!@rename($target, $sibling)) {
+            throw new RuntimeException("cannot move {$target} aside");
+        }
+        if (!@rename($staging, $target)) {
+            @rename($sibling, $target);
+            throw new RuntimeException("cannot move {$staging} into place (previous version restored)");
+        }
+
+        $backup = storage_path('app/tinymce-backups/' . $stamp);
+        File::ensureDirectoryExists(dirname($backup));
+
+        return File::moveDirectory($sibling, $backup) ? $backup : $sibling;
     }
 }

@@ -110,6 +110,29 @@ can switch the `direction` key in the config to 'rtl'.
 'direction' => 'rtl'
 ```
 
+## Upgrading TinyMCE (local provider)
+
+With `provider = local`, TinyMCE is served from `public/vendor/tinymce` (not tracked by git, not managed by composer).
+
+1. Set the new version in `config/filament-tinymce-editor.php` (`version.tiny`).
+2. Run the installer **as the web server user** on every server:
+
+```bash
+php artisan tinymce:install-assets            # installs version.tiny if it differs from the installed one
+php artisan tinymce:install-assets --force    # reinstall the same version
+php artisan tinymce:install-assets --tinymce-version=8.10.2
+```
+
+The installer downloads the npm tarball, verifies it against the registry's sha512 `integrity`, extracts it next to the live directory and swaps it in with two renames, so the live copy is never half-written. On any failure nothing is changed. The previous version is kept in `storage/app/tinymce-backups/<version>-<timestamp>` (rollback: move it back to `public/vendor/tinymce`).
+
+Do **not** delete `public/vendor/tinymce` on a live server: when `tinymce.min.js` is missing the package downloads TinyMCE during a web request, and concurrent requests can race.
+
+### Cache busting
+
+Every local TinyMCE URL (core, theme, model, icons, plugins, skins) carries `?v=<installed version>` via TinyMCE's `cache_suffix`. The version is read from the installed `public/vendor/tinymce/package.json`, not from the config, so a URL always matches the files actually served — deploying the config before or after the files never caches old files under a new version. npm ships TinyMCE files with a 1985 `Last-Modified`, which browsers otherwise cache heuristically for years and then mix with a newer core.
+
+Scripts that load TinyMCE themselves can reuse the same values from `window.filamentData.filamentTinymceEditor` (`src`, `cacheSuffix`).
+
 ## Versioning
 
 This project follow the [Semantic Versioning](https://semver.org/) guidelines.

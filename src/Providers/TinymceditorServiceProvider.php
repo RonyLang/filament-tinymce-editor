@@ -107,6 +107,17 @@ class TinymceditorServiceProvider extends PackageServiceProvider
             Js::make('tinymce', $mainJsSrc)->loadedOnRequest(),
             ...$languages,
         ], package: $this->getAssetPackageName());
+
+        // Expose the versioned local loader to other scripts that boot TinyMCE
+        // themselves: window.filamentData.filamentTinymceEditor.{src,cacheSuffix}
+        if ($provider === 'local') {
+            FilamentAsset::registerScriptData([
+                'filamentTinymceEditor' => [
+                    'src' => Tiny::localMainSrc(),
+                    'cacheSuffix' => Tiny::cacheSuffix(),
+                ],
+            ], $this->getAssetPackageName());
+        }
     }
 
     protected function getAssetPackageName(): ?string
